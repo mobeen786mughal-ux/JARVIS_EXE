@@ -1,0 +1,70 @@
+name: Build Windows EXE from ZIP
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-exe:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 1. ZIP Extract karo
+      - name: Extract ZIP
+        run: |
+          echo "🔍 ZIP file dhoond raha hoon..."
+          $zipFile = Get-ChildItem -Path . -Filter *.zip | Select-Object -First 1
+          
+          if ($zipFile) {
+              echo "📦 Found $zipFile, extracting..."
+              Expand-Archive -Path $zipFile.FullName -DestinationPath "extracted" -Force
+              
+              # Agar files ek subfolder ke andar hain (jaise extracted/Jarvis_V2_New), to unhe root me le aao
+              if (Test-Path "extracted/main.py") {
+                  Move-Item -Path "extracted\*" -Destination "." -Force
+              } else {
+                  $subDir = Get-ChildItem -Path "extracted" -Filter "main.py" -Recurse | Select-Object -First 1
+                  if ($subDir) {
+                      Move-Item -Path "$($subDir.Directory.FullName)\*" -Destination "." -Force
+                  }
+              }
+              Remove-Item -Path "extracted" -Recurse -Force
+          } else {
+              echo "⚠️ No ZIP found, assuming files are already in root."
+          }
+          dir
+
+      # 2. Python Setup
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      # 3. Dependencies Install (pycaw aur comtypes volume ke liye zaroori hain)
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flet==0.24.1 groq==0.11.0 SpeechRecognition==3.10.4 pyttsx3==2.98 gTTS==2.5.1 pygame==2.6.1 python-dotenv==1.0.1 Pillow pyinstaller pycaw comtypes pyautogui
+
+      # 4. Icons Setup (logo.png ko icon.png me convert karna)
+      - name: Setup Icons
+        run: |
+          python -c "from PIL import Image; img = Image.open('assets/logo.png').convert('RGBA'); img.save('assets/icon.png')"
+          dir assets
+
+      # 5. PyInstaller se EXE Build
+      - name: Build EXE
+        run: |
+          pyinstaller --noconfirm --onefile --windowed --name "JARVIS_V2" --add-data "assets;assets" main.py
+
+      # 6. EXE Upload
+      - name: Upload EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: JARVIS-V2-EXE
+          path: dist/JARVIS_V2.exe
+          if-no-files-found: error
